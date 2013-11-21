@@ -14,8 +14,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import re
-
 from oslo.config import cfg
 
 from cloudbaseinit.openstack.common import log as logging
@@ -35,6 +33,36 @@ CONF.register_opts(opts)
 
 
 class NetworkConfigPlugin(base.BasePlugin):
+
+    def _parse_config(self, config):
+        ifaces = []
+        iface = {}
+        ifname = None
+        for line in config.splitlines():
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            (key, value) = line.split(None, 1)
+            # iface stanza means beginning of interface config
+            if key == 'iface':
+                if iface:
+                    ifaces.append(iface)
+                (ifname, family, method) = value.split(None, 2)
+                iface = {'name': ifname, 'family': family,
+                         'method': method}
+            elif key in ['address', 'netmask', 'boardcast', 'gateway',
+                         'hwaddress']:
+                iface[key] = value.strip()
+            elif key in ['dns-nameservers', 'dns-search']:
+                iface[key] = value.split()
+            elif key in ['pre-up', 'up', 'down', 'post-down']:
+                if key not in iface:
+                    iface[key] = []
+                iface[key].append(value)
+        if iface:
+            ifaces.append(iface)
+        return ifaces
+
     def execute(self, service, shared_data):
         meta_data = service.get_meta_data('openstack')
         if 'network_config' not in meta_data:
@@ -49,42 +77,36 @@ class NetworkConfigPlugin(base.BasePlugin):
         debian_network_conf = service.get_content('openstack', content_name)
 
         LOG.debug('network config content:\n%s' % debian_network_conf)
-
-        # TODO (alexpilotti): implement a proper grammar
-        m = re.search(r'iface eth0 inet static\s+'
-                      r'address\s+(?P<address>[^\s]+)\s+'
-                      r'netmask\s+(?P<netmask>[^\s]+)\s+'
-                      r'broadcast\s+(?P<broadcast>[^\s]+)\s+'
-                      r'gateway\s+(?P<gateway>[^\s]+)\s+'
-                      r'dns\-nameservers\s+(?P<dnsnameservers>[^\r\n]+)\s+',
-                      debian_network_conf)
-        if not m:
-            raise Exception("network_config format not recognized")
-
-        address = m.group('address')
-        netmask = m.group('netmask')
-        broadcast = m.group('broadcast')
-        gateway = m.group('gateway')
-        dnsnameservers = m.group('dnsnameservers').strip().split(' ')
+        ifaces = []
+        for i in self._parse_config(debian_network_conf):
+            # IPv4 support only
+            if i['family'] not in ['inet']:
+                LOG.debug('Skipping unsupported family: %s' % i['family'])
+                continue
+            if i['method'] not in ['static']:
+                LOG.debug('Skipping unsupported method: %s' % i['method'])
+                continue
+            ifaces.append(i)
 
         osutils = osutils_factory.OSUtilsFactory().get_os_utils()
 
-        network_adapter_name = CONF.network_adapter
-        if not network_adapter_name:
-            # Get the first available one
-            available_adapters = osutils.get_network_adapters()
-            if not len(available_adapters):
+        if CONF.network_adapter:
+            network_adapter_names = [CONF.network_adapter]
+        else:
+            # Get all available ones if none provided
+            network_adapter_names = osutils.get_network_adapters()
+            if not len(network_adapter_names):
                 raise Exception("No network adapter available")
-            network_adapter_name = available_adapters[0]
 
-        LOG.info('Configuring network adapter: \'%s\'' % network_adapter_name)
-
-        reboot_required = osutils.set_static_network_config(
-            adapter_name=network_adapter_name,
-            address=address,
-            netmask=netmask,
-            boardcast=broadcast,
-            gateway=gateway,
-            dnsnameservers=dnsnameservers)
+        reboot_required = False
+        for adapter, iface in zip(network_adapter_names, ifaces):
+            LOG.info('Configuring network adapter: \'%s\'' % adapter)
+            reboot_required |= osutils.set_static_network_config(
+                adapter_name=adapter,
+                address=iface.get('address'),
+                netmask=iface.get('netmask'),
+                broadcast=iface.get('broadcast'),
+                gateway=iface.get('gateway'),
+                dnsnameservers=iface.get('dns-nameservers'))
 
         return (base.PLUGIN_EXECUTION_DONE, reboot_required)
