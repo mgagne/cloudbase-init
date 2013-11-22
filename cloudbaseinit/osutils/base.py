@@ -64,6 +64,9 @@ class BaseOSUtils(object):
     def get_network_adapters(self):
         raise NotImplementedError()
 
+    def set_dhcp_network_config(self, adapter_name):
+        pass
+
     def set_static_network_config(self, adapter_name, address, netmask,
                                   broadcast=None, gateway=None, dnsdomain=None,
                                   dnsnameservers=None):
