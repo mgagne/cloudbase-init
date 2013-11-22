@@ -353,7 +353,8 @@ class WindowsUtils(base.BaseOSUtils):
         return l
 
     def set_static_network_config(self, adapter_name, address, netmask,
-                                  broadcast, gateway, dnsnameservers):
+                                  broadcast, gateway=None, dnsdomain=None,
+                                  dnsnameservers=None):
         conn = wmi.WMI(moniker='//./root/cimv2')
 
         adapter_name_san = self._sanitize_wmi_input(adapter_name)
@@ -366,23 +367,32 @@ class WindowsUtils(base.BaseOSUtils):
         adapter_config = q[0].associators(
             wmi_result_class='Win32_NetworkAdapterConfiguration')[0]
 
-        LOG.debug("Setting static IP address")
+        LOG.debug("Setting static IP address: %s/%s", address, netmask)
         (ret_val,) = adapter_config.EnableStatic([address], [netmask])
         if ret_val > 1:
             raise Exception("Cannot set static IP address on network adapter")
         reboot_required = (ret_val == 1)
 
-        LOG.debug("Setting static gateways")
-        (ret_val,) = adapter_config.SetGateways([gateway], [1])
-        if ret_val > 1:
-            raise Exception("Cannot set gateway on network adapter")
-        reboot_required = reboot_required or ret_val == 1
+        if not gateway:
+            LOG.debug("Skipping configuration of static gateway "
+                      "(none provided)")
+        else:
+            LOG.debug("Setting static gateway: %s", gateway)
+            (ret_val,) = adapter_config.SetGateways([gateway], [1])
+            if ret_val > 1:
+                raise Exception("Cannot set gateway on network adapter")
+            reboot_required = reboot_required or ret_val == 1
 
-        LOG.debug("Setting static DNS servers")
-        (ret_val,) = adapter_config.SetDNSServerSearchOrder(dnsnameservers)
-        if ret_val > 1:
-            raise Exception("Cannot set DNS on network adapter")
-        reboot_required = reboot_required or ret_val == 1
+        if not dnsnameservers:
+            LOG.debug("Skipping configuration of static DNS servers "
+                      "(none provided)")
+        else:
+            LOG.debug("Setting static DNS servers: %s",
+                      ",".join(dnsnameservers))
+            (ret_val,) = adapter_config.SetDNSServerSearchOrder(dnsnameservers)
+            if ret_val > 1:
+                raise Exception("Cannot set DNS on network adapter")
+            reboot_required = reboot_required or ret_val == 1
 
         return reboot_required
 
