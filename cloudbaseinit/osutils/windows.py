@@ -329,9 +329,7 @@ class WindowsUtils(base.BaseOSUtils):
             l.append(r.Name)
         return l
 
-    def set_static_network_config(self, adapter_name, address, netmask,
-                                  broadcast, gateway=None, dnsdomain=None,
-                                  dnsnameservers=None):
+    def _get_adapter_config(self, adapter_name):
         conn = wmi.WMI(moniker='//./root/cimv2')
 
         adapter_name_san = self._sanitize_wmi_input(adapter_name)
@@ -343,6 +341,24 @@ class WindowsUtils(base.BaseOSUtils):
 
         adapter_config = q[0].associators(
             wmi_result_class='Win32_NetworkAdapterConfiguration')[0]
+
+        return adapter_config
+
+    def set_dhcp_network_config(self, adapter_name):
+        adapter_config = self._get_adapter_config(adapter_name)
+
+        LOG.debug("Enabling DHCP")
+        (ret_val,) = adapter_config.EnableDHCP()
+        if ret_val > 1:
+            raise Exception("Cannot enable DHCP on network adapter")
+        reboot_required = (ret_val == 1)
+
+        return reboot_required
+
+    def set_static_network_config(self, adapter_name, address, netmask,
+                                  broadcast, gateway=None, dnsdomain=None,
+                                  dnsnameservers=None):
+        adapter_config = self._get_adapter_config(adapter_name)
 
         LOG.debug("Setting static IP address: %s/%s", address, netmask)
         (ret_val,) = adapter_config.EnableStatic([address], [netmask])

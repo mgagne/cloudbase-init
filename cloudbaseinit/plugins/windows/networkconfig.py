@@ -82,7 +82,7 @@ class NetworkConfigPlugin(base.BasePlugin):
             if i['family'] not in ['inet']:
                 LOG.debug('Skipping unsupported family: %s' % i['family'])
                 continue
-            if i['method'] not in ['static']:
+            if i['method'] not in ['static', 'manual', 'dhcp']:
                 LOG.debug('Skipping unsupported method: %s' % i['method'])
                 continue
             ifaces.append(i)
@@ -100,12 +100,18 @@ class NetworkConfigPlugin(base.BasePlugin):
         reboot_required = False
         for adapter, iface in zip(network_adapter_names, ifaces):
             LOG.info('Configuring network adapter: \'%s\'' % adapter)
-            reboot_required |= osutils.set_static_network_config(
-                adapter_name=adapter,
-                address=iface.get('address'),
-                netmask=iface.get('netmask'),
-                broadcast=iface.get('broadcast'),
-                gateway=iface.get('gateway'),
-                dnsnameservers=iface.get('dns-nameservers'))
+            if iface['method'] == 'static':
+                reboot_required |= osutils.set_static_network_config(
+                    adapter_name=adapter,
+                    address=iface.get('address'),
+                    netmask=iface.get('netmask'),
+                    broadcast=iface.get('broadcast'),
+                    gateway=iface.get('gateway'),
+                    dnsnameservers=iface.get('dns-nameservers'))
+            elif iface['method'] == 'dhcp':
+                reboot_required |= osutils.set_dhcp_network_config(
+                    adapter_name=adapter)
+            elif iface['method'] == 'manual':
+                pass
 
         return (base.PLUGIN_EXECUTION_DONE, reboot_required)
