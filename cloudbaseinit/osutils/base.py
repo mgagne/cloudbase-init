@@ -62,8 +62,8 @@ class BaseOSUtils(object):
         pass
 
     def set_static_network_config(self, adapter_name, address, netmask,
-                                  broadcast, gateway, dnsdomain,
-                                  dnsnameservers):
+                                  broadcast=None, gateway=None, dnsdomain=None,
+                                  dnsnameservers=None):
         pass
 
     def set_config_value(self, name, value, section=None):

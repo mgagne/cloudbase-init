@@ -79,7 +79,11 @@ class NetworkConfigPlugin(base.BasePlugin):
         LOG.info('Configuring network adapter: \'%s\'' % network_adapter_name)
 
         reboot_required = osutils.set_static_network_config(
-            network_adapter_name, address, netmask, broadcast,
-            gateway, dnsnameservers)
+            adapter_name=network_adapter_name,
+            address=address,
+            netmask=netmask,
+            boardcast=broadcast,
+            gateway=gateway,
+            dnsnameservers=dnsnameservers)
 
         return (base.PLUGIN_EXECUTION_DONE, reboot_required)
