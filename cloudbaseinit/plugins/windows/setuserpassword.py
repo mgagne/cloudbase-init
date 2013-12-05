@@ -27,6 +27,8 @@ opts = [
     cfg.BoolOpt('inject_user_password', default=True, help='Set the password '
                 'provided in the configuration. If False or no password is '
                 'provided, a random one will be set'),
+    cfg.BoolOpt('require_password_change', default=False, help='Require user '
+                'to change password at next logon'),
 ]
 
 CONF = cfg.CONF
@@ -101,7 +103,10 @@ class SetUserPasswordPlugin(base.BasePlugin):
     def _set_password(self, service, osutils, user_name):
         password = self._get_password(service, osutils)
         LOG.info('Setting the user\'s password')
-        osutils.set_user_password(user_name, password)
+        osutils.set_user_password(
+            username=user_name,
+            password=password,
+            password_expired=CONF.require_password_change)
         return password
 
     def execute(self, service):

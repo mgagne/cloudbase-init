@@ -18,6 +18,9 @@ import _winreg
 import ctypes
 import re
 import time
+
+import pywintypes
+from win32com.client import GetObject
 import win32process
 import win32security
 import wmi
@@ -157,6 +160,8 @@ class WindowsUtils(base.BaseOSUtils):
 
     DRIVE_CDROM = 5
 
+    ADS_UF_DONT_EXPIRE_PASSWD = 0x10000
+
     ComputerNamePhysicalDnsHostname = 5
 
     _config_key = 'SOFTWARE\\Cloudbase Solutions\\Cloudbase-Init\\'
@@ -194,7 +199,8 @@ class WindowsUtils(base.BaseOSUtils):
         return self._get_user_wmi_object(username) is not None
 
     def _create_or_change_user(self, username, password, create,
-                               password_expires):
+                               password_expires=False,
+                               password_expired=False):
         username_san = self.sanitize_shell_input(username)
         password_san = self.sanitize_shell_input(password)
 
@@ -205,6 +211,8 @@ class WindowsUtils(base.BaseOSUtils):
         (out, err, ret_val) = self.execute_process(args)
         if not ret_val:
             self._set_user_password_expiration(username, password_expires)
+            if password_expired:
+                self._set_user_password_expired(username, True)
         else:
             if create:
                 msg = "Create user failed: %(err)s"
@@ -215,6 +223,25 @@ class WindowsUtils(base.BaseOSUtils):
     def _sanitize_wmi_input(self, value):
         return value.replace('\'', '\'\'')
 
+    def _set_user_password_expired(self, username, expired):
+        try:
+            user = GetObject("WinNT://./%s,user" % username)
+            if expired and (user.UserFlags & self.ADS_UF_DONT_EXPIRE_PASSWD):
+                # PasswordExpired cannot be set to 1 while UserFlags has
+                # ADS_UF_DONT_EXPIRE_PASSWD set to 1. This change needs
+                # to be saved before trying to update PasswordExpired.
+                LOG.debug("Removing ADS_UF_DONT_EXPIRE_PASSWD from UserFlags")
+                user.UserFlags = (
+                    user.UserFlags ^ self.ADS_UF_DONT_EXPIRE_PASSWD)
+                user.SetInfo()
+            LOG.debug("Setting PasswordExpired to %s" % int(expired))
+            user.PasswordExpired = int(expired)
+            user.SetInfo()
+        except pywintypes.com_error as e:
+            LOG.debug('Failed to expire password for \'%s\'' % username, e)
+            return False
+        return True
+
     def _set_user_password_expiration(self, username, password_expires):
         r = self._get_user_wmi_object(username)
         if not r:
@@ -223,13 +250,23 @@ class WindowsUtils(base.BaseOSUtils):
         r.Put_()
         return True
 
-    def create_user(self, username, password, password_expires=False):
-        self._create_or_change_user(username, password, True,
-                                    password_expires)
+    def create_user(self, username, password, password_expires=False,
+                    password_expired=False):
+        self._create_or_change_user(
+            username=username,
+            password=password,
+            create=True,
+            password_expires=password_expires,
+            password_expired=password_expired)
 
-    def set_user_password(self, username, password, password_expires=False):
-        self._create_or_change_user(username, password, False,
-                                    password_expires)
+    def set_user_password(self, username, password, password_expires=False,
+                          password_expired=False):
+        self._create_or_change_user(
+            username=username,
+            password=password,
+            create=False,
+            password_expires=password_expires,
+            password_expired=password_expired)
 
     def _get_user_sid_and_domain(self, username):
         sid = ctypes.create_string_buffer(1024)
