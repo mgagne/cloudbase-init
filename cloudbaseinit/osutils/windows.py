@@ -555,8 +555,8 @@ class WindowsUtils(base.BaseOSUtils):
         return len([r for r in self._get_ipv4_routing_table()
                     if r[0] == destination]) > 0
 
-    def add_static_route(self, destination, mask, next_hop, interface_index,
-                         metric):
+    def add_static_route(self, destination, mask, next_hop,
+                         interface_index=None, metric=None):
         args = ['ROUTE', 'ADD', destination, 'MASK', mask, next_hop]
         (out, err, ret_val) = self.execute_process(args)
         # Cannot use the return value to determine the outcome

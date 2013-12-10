@@ -87,8 +87,8 @@ class BaseOSUtils(object):
     def check_static_route_exists(self, destination):
         pass
 
-    def add_static_route(self, destination, mask, next_hop, interface_index,
-                         metric):
+    def add_static_route(self, destination, mask, next_hop,
+                         interface_index=None, metric=None):
         pass
 
     def check_os_version(self, major, minor, build=0):
