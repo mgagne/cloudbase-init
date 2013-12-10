@@ -557,7 +557,7 @@ class WindowsUtils(base.BaseOSUtils):
 
     def add_static_route(self, destination, mask, next_hop,
                          interface_index=None, metric=None):
-        args = ['ROUTE', 'ADD', destination, 'MASK', mask, next_hop]
+        args = ['ROUTE', '/P', 'ADD', destination, 'MASK', mask, next_hop]
         (out, err, ret_val) = self.execute_process(args)
         # Cannot use the return value to determine the outcome
         if err:

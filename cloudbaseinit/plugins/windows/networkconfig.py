@@ -14,6 +14,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import re
+
 from cloudbaseinit.openstack.common import cfg
 from cloudbaseinit.openstack.common import log as logging
 from cloudbaseinit.osutils import factory as osutils_factory
@@ -61,6 +63,20 @@ class NetworkConfigPlugin(base.BasePlugin):
         if iface:
             ifaces.append(iface)
         return ifaces
+
+    def _get_iface_routes(self, iface):
+        ip_p = "\d{1,3}(?:\.\d{1,3}){3}"
+        route_p = "route add -net ({0}) netmask ({0}) gw ({0})".format(ip_p)
+        route_re = re.compile(route_p)
+        routes = []
+        if 'up' in iface:
+            for up in iface['up']:
+                match = route_re.match(up)
+                if match:
+                    routes.append({'address': match.group(1),
+                                   'netmask': match.group(2),
+                                   'gateway': match.group(3)})
+        return routes
 
     def execute(self, service):
         meta_data = service.get_meta_data('openstack')
@@ -113,5 +129,12 @@ class NetworkConfigPlugin(base.BasePlugin):
                     adapter_name=adapter)
             elif iface['method'] == 'manual':
                 pass
+
+            LOG.info('Configuring routes: \'%s\'' % adapter)
+            routes = self._get_iface_routes(iface)
+            for route in routes:
+                osutils.add_static_route(destination=route['address'],
+                                         mask=route['netmask'],
+                                         next_hop=route['gateway'])
 
         return (base.PLUGIN_EXECUTION_DONE, reboot_required)
